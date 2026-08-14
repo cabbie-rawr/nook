@@ -1,0 +1,6 @@
+/target
+/nook.db
+/nook.db-*
+.env
+/storage/*
+!/storage/.gitkeep
