@@ -780,15 +780,21 @@
       if (form.dataset.enhanced) return;
       form.dataset.enhanced = '1';
 
-      const group = document.createElement('div');
-      group.className = 'oauth-group';
-      group.innerHTML =
-        '<button type="button" class="btn-oauth" data-coming-soon="Google sign-in isn\'t connected yet.">' + svgGoogleMark() + '<span>Continue with Google</span></button>'
-        + '<button type="button" class="btn-oauth" data-coming-soon="GitHub sign-in isn\'t connected yet.">' + svgGithubMark() + '<span>Continue with GitHub</span></button>';
-      const divider = document.createElement('div');
-      divider.className = 'auth-divider';
-      divider.innerHTML = '<span>or continue with email</span>';
-      form.before(group, divider);
+      // Builds backed by real OAuth (Supabase) already server-render a
+      // `.oauth-group` + `.auth-divider` pair ahead of the form, with real
+      // /auth/oauth/... links — don't cover those with fake "coming soon"
+      // placeholders. Only inject placeholders when the server didn't.
+      if (!form.parentElement.querySelector('.oauth-group')) {
+        const group = document.createElement('div');
+        group.className = 'oauth-group';
+        group.innerHTML =
+          '<button type="button" class="btn-oauth" data-coming-soon="Google sign-in isn\'t connected yet.">' + svgGoogleMark() + '<span>Continue with Google</span></button>'
+          + '<button type="button" class="btn-oauth" data-coming-soon="GitHub sign-in isn\'t connected yet.">' + svgGithubMark() + '<span>Continue with GitHub</span></button>';
+        const divider = document.createElement('div');
+        divider.className = 'auth-divider';
+        divider.innerHTML = '<span>or continue with email</span>';
+        form.before(group, divider);
+      }
 
       // "Forgot password?" next to the Password label — login only; a fresh
       // signup form has no password to have forgotten yet.

@@ -564,6 +564,7 @@ button { cursor: pointer; font-weight: 600; transition: filter var(--dur) var(--
   display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
   width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--ink);
   border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3); font-weight: 600; font-size: 0.92rem;
+  text-decoration: none; cursor: pointer;
 }
 .btn-oauth:hover { border-color: var(--accent); background: var(--surface-hover); transform: translateY(-1px); }
 .btn-oauth:active { transform: translateY(0); background: var(--surface-sunken); }
