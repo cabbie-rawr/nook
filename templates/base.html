@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>(function(){try{var t=localStorage.getItem('nook-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <title>{% block title %}Nook{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span>Nook</a>
+    {% block nav %}{% endblock %}
+  </header>
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+
+  <div id="toast-region" class="toast-region" role="status" aria-live="polite"></div>
+  <div id="a11y-announcer" class="visually-hidden" role="status" aria-live="polite"></div>
+
+  <div id="command-palette" class="palette-overlay" hidden>
+    <div class="palette-scrim" data-close-palette></div>
+    <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+      <input id="palette-input" class="palette-input" type="text" placeholder="Search tasks, spaces, or run a command…" autocomplete="off" spellcheck="false">
+      <ul id="palette-results" class="palette-results" role="listbox"></ul>
+    </div>
+  </div>
+
+  <div id="shortcuts-sheet" class="palette-overlay" hidden>
+    <div class="palette-scrim" data-close-shortcuts></div>
+    <div class="palette shortcuts-sheet" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+      <h2>Keyboard shortcuts</h2>
+      <dl>
+        <div><dt><kbd>N</kbd></dt><dd>New task</dd></div>
+        <div><dt><kbd>/</kbd></dt><dd>Search</dd></div>
+        <div><dt><kbd>G</kbd> then <kbd>C</kbd></dt><dd>Go to Calendar</dd></div>
+        <div><dt><kbd>G</kbd> then <kbd>S</kbd></dt><dd>Go to Spaces</dd></div>
+        <div><dt><kbd>Esc</kbd></dt><dd>Close panel</dd></div>
+        <div><dt><kbd>?</kbd></dt><dd>Show this sheet</dd></div>
+      </dl>
+    </div>
+  </div>
+
+  <div id="focus-session" class="focus-overlay" hidden>
+    <div class="focus-panel" role="dialog" aria-modal="true" aria-label="Focus session">
+      <p class="focus-space" id="focus-session-space"></p>
+      <h2 id="focus-session-title"></h2>
+      <div class="focus-timer" id="focus-session-timer">25:00</div>
+      <ul class="focus-steps" id="focus-session-steps"></ul>
+      <div class="focus-controls">
+        <label class="focus-duration">Minutes
+          <input type="number" id="focus-session-minutes" min="1" max="180" value="25">
+        </label>
+        <button class="btn-primary" id="focus-session-start" type="button">Start</button>
+        <button class="btn-secondary" id="focus-session-end" type="button" hidden>End session</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

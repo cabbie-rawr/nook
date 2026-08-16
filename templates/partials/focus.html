@@ -1,0 +1,25 @@
+<section class="card card-focus" data-card="focus" tabindex="0" draggable="true" aria-labelledby="card-focus-label">
+  <h2 class="card-label" id="card-focus-label">Focus</h2>
+  <div class="card-body">
+    <p class="focus-greeting">{{ greeting }}</p>
+    <p class="focus-date">{{ date_str }}</p>
+
+    {% if focus.kind == "none" %}
+    <p class="empty-state">Nothing urgent right now — pick something from a space to work on.</p>
+    <a class="btn-secondary" href="/spaces">Browse spaces</a>
+    {% else %}
+    <div class="focus-current">
+      {% if let Some(color) = focus.space_color %}<span class="dot dot-{{ color }}" aria-hidden="true"></span>{% endif %}
+      <div>
+        <p class="focus-title">{{ focus.title }}</p>
+        <p class="focus-subtitle">{{ focus.subtitle }}</p>
+      </div>
+    </div>
+    <button class="btn-primary" type="button" data-focus-start
+            data-task-id="{% if let Some(id) = focus.task_id %}{{ id }}{% endif %}"
+            data-title="{{ focus.title }}">
+      Start focus session
+    </button>
+    {% endif %}
+  </div>
+</section>

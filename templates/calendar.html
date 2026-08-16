@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Calendar · Nook{% endblock %}
+
+{% block nav %}
+<nav class="primary-nav" aria-label="Primary">
+  <a href="/" data-nav="today">Today</a>
+  <a href="/spaces" data-nav="spaces">Spaces</a>
+  <a href="/calendar" data-nav="calendar" class="is-active">Calendar</a>
+</nav>
+<button class="palette-trigger" type="button" data-open-palette aria-haspopup="dialog" aria-controls="command-palette">
+  <span>Search</span><kbd>⌘K</kbd>
+</button>
+<div class="nav-right">
+  <span class="muted">{{ display_name }}</span>
+  <form method="post" action="/logout"><button class="link-button" type="submit">Log out</button></form>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="section-head">
+  <h1>Calendar</h1>
+  <p class="muted">Standing blocks — classes, shifts, standing meetings — that Today reads from.</p>
+</section>
+
+<section class="card">
+  <h2 class="card-label">Add a block</h2>
+  <div class="card-body">
+    <form method="post" action="/schedule-blocks" class="stack schedule-form">
+      <label>Title
+        <input type="text" name="title" required>
+      </label>
+      <fieldset class="mode-choice">
+        <legend>Repeats</legend>
+        <label class="radio"><input type="radio" name="kind" value="recurring" checked data-schedule-kind="recurring"> Weekly, on a day</label>
+        <label class="radio"><input type="radio" name="kind" value="one_off" data-schedule-kind="one_off"> One time, on a date</label>
+      </fieldset>
+      <label data-schedule-field="recurring">Day of week
+        <select name="day_of_week">
+          <option value="0">Sunday</option>
+          <option value="1">Monday</option>
+          <option value="2">Tuesday</option>
+          <option value="3">Wednesday</option>
+          <option value="4">Thursday</option>
+          <option value="5">Friday</option>
+          <option value="6">Saturday</option>
+        </select>
+      </label>
+      <label data-schedule-field="one_off" hidden>Date
+        <input type="date" name="specific_date">
+      </label>
+      <div class="task-form-row">
+        <label>Start <input type="time" name="start_time" required></label>
+        <label>End <input type="time" name="end_time" required></label>
+      </div>
+      <label>Space (optional)
+        <select name="space_id">
+          <option value="">No space</option>
+          {% for (id, name) in spaces %}
+          <option value="{{ id }}">{{ name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit">Add block</button>
+    </form>
+  </div>
+</section>
+
+<section class="card">
+  <h2 class="card-label">Weekly</h2>
+  <div class="card-body">
+    {% if recurring.is_empty() %}
+    <p class="empty-state">No standing blocks yet — add your class or work schedule above.</p>
+    {% else %}
+    <ul class="schedule-list">
+      {% for block in recurring %}
+      <li>
+        <span class="schedule-day">{{ block.day_label }}</span>
+        <span>{{ block.title }}</span>
+        <span class="muted">{{ block.time_range }}</span>
+        <form method="post" action="/schedule-blocks/{{ block.id }}/delete"><button class="link-button danger" type="submit">Remove</button></form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <h2 class="card-label">Upcoming one-time blocks</h2>
+  <div class="card-body">
+    {% if one_off.is_empty() %}
+    <p class="empty-state">Nothing one-off scheduled.</p>
+    {% else %}
+    <ul class="schedule-list">
+      {% for block in one_off %}
+      <li>
+        <span class="schedule-day">{{ block.day_label }}</span>
+        <span>{{ block.title }}</span>
+        <span class="muted">{{ block.time_range }}</span>
+        <form method="post" action="/schedule-blocks/{{ block.id }}/delete"><button class="link-button danger" type="submit">Remove</button></form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

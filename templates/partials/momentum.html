@@ -1,0 +1,20 @@
+<section class="card card-momentum" data-card="momentum" tabindex="0" draggable="true" aria-labelledby="card-momentum-label">
+  <h2 class="card-label" id="card-momentum-label">Momentum</h2>
+  <div class="card-body">
+    {% if completed_this_month == 0 && streak == 0 %}
+    <p class="empty-state">Complete a task to start building momentum.</p>
+    {% endif %}
+    <div class="momentum-grid" aria-hidden="true">
+      {% for week in weeks %}
+      <div class="momentum-week">
+        {% for day in week %}
+        <span class="momentum-day level-{{ day.level }}{% if day.in_future %} is-future{% endif %}" data-date="{{ day.date_label }}" data-count="{{ day.count }}"></span>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <p class="momentum-summary">
+      <strong>{{ streak }}</strong> day streak · <strong>{{ completed_this_month }}</strong> task{% if completed_this_month != 1 %}s{% endif %} completed this month
+    </p>
+  </div>
+</section>

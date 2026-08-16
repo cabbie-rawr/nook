@@ -1,0 +1,24 @@
+<section class="card card-upnext" data-card="up_next" tabindex="0" draggable="true" aria-labelledby="card-up_next-label">
+  <h2 class="card-label" id="card-up_next-label">Up Next</h2>
+  <div class="card-body">
+    {% if items.is_empty() %}
+    <p class="empty-state">Nothing else on today's schedule.</p>
+    {% else %}
+    <ol class="timeline">
+      {% for item in items %}
+      {% if loop.index0 == now_line_index %}
+      <li class="now-line" aria-hidden="true"><span>Now</span></li>
+      {% endif %}
+      <li class="timeline-item{% if item.is_past %} is-past{% endif %}">
+        <span class="dot dot-{{ item.space_color }}" aria-hidden="true"></span>
+        <span class="timeline-time">{{ item.time_label }}</span>
+        <span class="timeline-title">{{ item.title }}</span>
+      </li>
+      {% endfor %}
+      {% if now_line_index == items.len() %}
+      <li class="now-line" aria-hidden="true"><span>Now</span></li>
+      {% endif %}
+    </ol>
+    {% endif %}
+  </div>
+</section>

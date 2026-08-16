@@ -1,0 +1,24 @@
+<section class="card card-space-progress" data-card="space_progress" tabindex="0" draggable="true" aria-labelledby="card-space_progress-label">
+  <h2 class="card-label" id="card-space_progress-label">Space Progress</h2>
+  <div class="card-body">
+    {% if rows.is_empty() %}
+    <p class="empty-state">Create a space to start tracking progress.</p>
+    <a class="btn-secondary" href="/spaces">Create a space</a>
+    {% else %}
+    <ul class="space-progress-list">
+      {% for row in rows %}
+      <li>
+        <a href="/spaces/{{ row.id }}" class="space-progress-row">
+          <span class="dot dot-{{ row.color }}" aria-hidden="true"></span>
+          <span class="space-progress-name">{{ row.name }}</span>
+          <span class="space-progress-open">{{ row.open }} open</span>
+        </a>
+        <div class="progress-track" role="progressbar" aria-valuenow="{{ row.percent }}" aria-valuemin="0" aria-valuemax="100" aria-label="{{ row.name }} progress">
+          <div class="progress-fill" style="width:{{ row.percent }}%"></div>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</section>

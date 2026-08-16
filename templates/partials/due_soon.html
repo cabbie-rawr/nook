@@ -1,0 +1,48 @@
+<section class="card card-due-soon" data-card="due_soon" tabindex="0" draggable="true" aria-labelledby="card-due_soon-label">
+  <h2 class="card-label" id="card-due_soon-label">Due Soon</h2>
+  <div class="card-body">
+    <div class="quick-add">
+      <input type="text" id="quick-add-input" class="quick-add-input" autocomplete="off"
+             placeholder='Add a task… try "Draft chapter 3 friday 5pm #Thesis high"'>
+      <div class="quick-add-preview" id="quick-add-preview" aria-live="polite"></div>
+    </div>
+
+    {% if groups.is_empty() %}
+    <p class="empty-state">Nothing due in the next 7 days. Add one above, or enjoy the clear runway.</p>
+    {% else %}
+    {% for group in groups %}
+      {% if group.key == "overdue" %}
+      <div class="due-group">
+        <h3 class="due-group-header is-overdue" id="due-group-overdue">{{ group.label }}</h3>
+        <ul class="due-rows" aria-labelledby="due-group-overdue">
+          {% for row in group.rows %}
+          <li class="due-row" id="due-row-{{ row.id }}" data-task-id="{{ row.id }}">
+            <input type="checkbox" class="task-checkbox" data-task-id="{{ row.id }}" aria-label="Mark done: {{ row.title }}">
+            <span class="dot dot-{{ row.space_color }}" aria-hidden="true"></span>
+            <span class="due-row-title">{{ row.title }}</span>
+            <span class="due-row-relative">{{ row.relative }}</span>
+            {% if row.attachment_count > 0 %}<span class="pill attachment-pill">{{ row.attachment_count }} file{% if row.attachment_count != 1 %}s{% endif %}</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% else %}
+      <details class="due-group" open>
+        <summary class="due-group-header">{{ group.label }}</summary>
+        <ul class="due-rows">
+          {% for row in group.rows %}
+          <li class="due-row" id="due-row-{{ row.id }}" data-task-id="{{ row.id }}">
+            <input type="checkbox" class="task-checkbox" data-task-id="{{ row.id }}" aria-label="Mark done: {{ row.title }}">
+            <span class="dot dot-{{ row.space_color }}" aria-hidden="true"></span>
+            <span class="due-row-title">{{ row.title }}</span>
+            <span class="due-row-relative">{{ row.relative }}</span>
+            {% if row.attachment_count > 0 %}<span class="pill attachment-pill">{{ row.attachment_count }} file{% if row.attachment_count != 1 %}s{% endif %}</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+    {% endfor %}
+    {% endif %}
+  </div>
+</section>

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}{{ space.name }} · Nook{% endblock %}
+
+{% block nav %}
+<nav class="primary-nav" aria-label="Primary">
+  <a href="/" data-nav="today">Today</a>
+  <a href="/spaces" data-nav="spaces" class="is-active">Spaces</a>
+  <a href="/calendar" data-nav="calendar">Calendar</a>
+</nav>
+<button class="palette-trigger" type="button" data-open-palette aria-haspopup="dialog" aria-controls="command-palette">
+  <span>Search</span><kbd>⌘K</kbd>
+</button>
+<div class="nav-right">
+  <span class="muted">{{ display_name }}</span>
+  <form method="post" action="/logout"><button class="link-button" type="submit">Log out</button></form>
+</div>
+{% endblock %}
+
+{% block content %}
+<a class="back-link" href="/">&larr; All spaces</a>
+<section class="section-head space-{{ space.color }}">
+  <h1>{{ space.name }}</h1>
+</section>
+
+<details class="edit-space">
+  <summary>Edit space</summary>
+  <form method="post" action="/spaces/{{ space.id }}/edit" class="inline-form">
+    <input type="text" name="name" value="{{ space.name }}" required>
+    <select name="color">
+      {% for option in color_options %}
+      <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Save</button>
+  </form>
+</details>
+
+<form method="post" action="/spaces/{{ space.id }}/tasks" class="card task-form">
+  <input type="text" name="title" placeholder="New task" required>
+  <textarea name="notes" placeholder="Notes (optional)"></textarea>
+  <div class="task-form-row">
+    <select name="priority">
+      {% for option in priority_options %}
+      <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+    <input type="date" name="due_at">
+    <button type="submit">Add task</button>
+  </div>
+</form>
+
+<ul class="task-list" id="task-list">
+  {% if tasks_html.is_empty() %}
+  <li class="muted no-tasks">No tasks yet — add one above.</li>
+  {% else %}
+  {{ tasks_html|safe }}
+  {% endif %}
+</ul>
+{% endblock %}

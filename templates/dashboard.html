@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Your spaces · Nook{% endblock %}
+
+{% block nav %}
+<nav class="primary-nav" aria-label="Primary">
+  <a href="/" data-nav="today">Today</a>
+  <a href="/spaces" data-nav="spaces" class="is-active">Spaces</a>
+  <a href="/calendar" data-nav="calendar">Calendar</a>
+</nav>
+<button class="palette-trigger" type="button" data-open-palette aria-haspopup="dialog" aria-controls="command-palette">
+  <span>Search</span><kbd>⌘K</kbd>
+</button>
+<div class="nav-right">
+  <span class="muted">{{ display_name }}</span>
+  <form method="post" action="/logout"><button class="link-button" type="submit">Log out</button></form>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="section-head">
+  <h1>Your spaces</h1>
+</section>
+
+<form method="post" action="/spaces" class="inline-form card">
+  <input type="text" name="name" placeholder="New space name" required>
+  <select name="color">
+    {% for option in color_options %}
+    <option value="{{ option.value }}">{{ option.label }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Add space</button>
+</form>
+
+{% if active_spaces.is_empty() %}
+<p class="muted">No spaces yet — add one above to get started.</p>
+{% else %}
+<div class="space-grid">
+  {% for space in active_spaces %}
+  <article class="space-card space-{{ space.color }}">
+    <a class="space-card-link" href="/spaces/{{ space.id }}">
+      <h2>{{ space.name }}</h2>
+    </a>
+    <div class="space-card-actions">
+      <form method="post" action="/spaces/{{ space.id }}/archive"><button class="link-button" type="submit">Archive</button></form>
+      <form method="post" action="/spaces/{{ space.id }}/delete" onsubmit="return confirm('Delete this space and all its tasks?');"><button class="link-button danger" type="submit">Delete</button></form>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if !archived_spaces.is_empty() %}
+<details class="archived">
+  <summary>Archived ({{ archived_spaces.len() }})</summary>
+  <div class="space-grid">
+    {% for space in archived_spaces %}
+    <article class="space-card space-{{ space.color }} is-archived">
+      <h2>{{ space.name }}</h2>
+      <div class="space-card-actions">
+        <form method="post" action="/spaces/{{ space.id }}/archive"><button class="link-button" type="submit">Restore</button></form>
+        <form method="post" action="/spaces/{{ space.id }}/delete" onsubmit="return confirm('Delete this space and all its tasks?');"><button class="link-button danger" type="submit">Delete</button></form>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+{% endblock %}

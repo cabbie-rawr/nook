@@ -1,0 +1,24 @@
+<li class="task-row status-{{ task.status_value }}{% if task.is_done %} is-done{% endif %}{% if task.overdue %} is-overdue{% endif %}" id="task-{{ task.id }}">
+  <div class="task-main">
+    <a class="task-title" href="/tasks/{{ task.id }}">{{ task.title }}</a>
+    <span class="task-meta">
+      <span class="pill priority-{{ task.priority_value }}">{{ task.priority_label }}</span>
+      {% if let Some(due) = task.due_label %}
+      <span class="pill due">{{ due }}</span>
+      {% endif %}
+    </span>
+  </div>
+  {% if !task.notes.is_empty() %}
+  <p class="task-notes">{{ task.notes }}</p>
+  {% endif %}
+  <div class="task-actions">
+    <form hx-post="/tasks/{{ task.id }}/status" hx-target="#task-{{ task.id }}" hx-swap="outerHTML">
+      <select name="status" onchange="this.form.requestSubmit()">
+        {% for option in status_options %}
+        <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <button class="link-button danger" hx-post="/tasks/{{ task.id }}/delete" hx-target="#task-{{ task.id }}" hx-swap="outerHTML" hx-confirm="Delete this task?" type="button">Delete</button>
+  </div>
+</li>

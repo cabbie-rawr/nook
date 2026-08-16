@@ -1,14 +1,19 @@
-//! Row types for every table in `migrations/0001_initial_schema.sql`.
+//! Row types for every table in `migrations/0001_supabase_init.sql`.
 //!
 //! Enums derive `sqlx::Type` and are stored as their (snake_case) variant name
-//! in a `TEXT` column — this matches the `CHECK (col IN (...))` constraints in
+//! in a `text` column — this matches the `check (col in (...))` constraints in
 //! the migration exactly, so an invalid string can't reach the database from
-//! either direction. Timestamps are `DateTime<Utc>` stored as ISO-8601 TEXT;
+//! either direction. Timestamps are `DateTime<Utc>` (Postgres `timestamptz`);
 //! `start_time`/`end_time` on schedule blocks are wall-clock `NaiveTime`
-//! ("HH:MM"), deliberately not tied to a date.
+//! (Postgres `time`), deliberately not tied to a date.
+//!
+//! `User.id` and every `user_id` column are `Uuid` — Supabase Auth owns the
+//! identity table (`auth.users`) and mints its own UUID per account; there's
+//! no local `password_hash`/`sessions` table anymore (see `auth.rs`).
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -68,12 +73,25 @@ pub enum TaskPriority {
 // Tables
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+/// The logged-in user: `id`/`email` come from the verified Supabase JWT, the
+/// rest from the `profiles` row that's created automatically on signup
+/// (see `supabase/schema.sql`'s `handle_new_user` trigger). Not an
+/// `sqlx::FromRow` itself — `auth.rs` assembles it from those two sources.
+#[derive(Debug, Clone, Serialize)]
 pub struct User {
-    pub id: i64,
+    pub id: Uuid,
     pub email: String,
-    #[serde(skip_serializing)]
-    pub password_hash: String,
+    pub display_name: String,
+    pub mode: UserMode,
+    pub timezone: String,
+    pub theme_preference: ThemePreference,
+    pub created_at: DateTime<Utc>,
+}
+
+/// The `profiles` table row, before the JWT's id/email are joined in above.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct Profile {
+    pub id: Uuid,
     pub display_name: String,
     pub mode: UserMode,
     pub timezone: String,
@@ -82,17 +100,9 @@ pub struct User {
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
-pub struct Session {
-    pub id: String,
-    pub user_id: i64,
-    pub created_at: DateTime<Utc>,
-    pub expires_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct Space {
     pub id: i64,
-    pub user_id: i64,
+    pub user_id: Uuid,
     pub name: String,
     pub color: SpaceColor,
     pub icon: String,
@@ -113,6 +123,8 @@ pub struct Task {
     pub completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub last_opened_at: Option<DateTime<Utc>>,
+    pub logged_minutes: i64,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -139,7 +151,7 @@ pub struct Attachment {
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct ScheduleBlock {
     pub id: i64,
-    pub user_id: i64,
+    pub user_id: Uuid,
     pub space_id: Option<i64>,
     pub title: String,
     pub day_of_week: Option<i64>, // 0=Sunday .. 6=Saturday, set when recurring
@@ -153,7 +165,7 @@ pub struct ScheduleBlock {
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct Tag {
     pub id: i64,
-    pub user_id: i64,
+    pub user_id: Uuid,
     pub name: String,
 }
 
@@ -163,8 +175,113 @@ pub struct TaskTag {
     pub tag_id: i64,
 }
 
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct UserLayout {
+    pub user_id: Uuid,
+    pub layout: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct OnboardingState {
+    pub user_id: Uuid,
+    pub dismissed: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Attachment upload limit — referenced by both the multipart handler and the
 // client-side hint in the upload zone, so the number lives in exactly one place.
 // ---------------------------------------------------------------------------
 pub const MAX_ATTACHMENT_BYTES: i64 = 25 * 1024 * 1024; // 25 MB
+
+// ---------------------------------------------------------------------------
+// Presentation helpers — the snake_case wire value (also used as an HTML
+// attribute/option value) and a human label, kept next to the enums they
+// describe rather than duplicated in template logic.
+// ---------------------------------------------------------------------------
+
+impl SpaceColor {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SpaceColor::Clay => "clay",
+            SpaceColor::Sage => "sage",
+            SpaceColor::Slate => "slate",
+            SpaceColor::Amber => "amber",
+            SpaceColor::Plum => "plum",
+            SpaceColor::Teal => "teal",
+            SpaceColor::Rust => "rust",
+            SpaceColor::Denim => "denim",
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            SpaceColor::Clay => "Clay",
+            SpaceColor::Sage => "Sage",
+            SpaceColor::Slate => "Slate",
+            SpaceColor::Amber => "Amber",
+            SpaceColor::Plum => "Plum",
+            SpaceColor::Teal => "Teal",
+            SpaceColor::Rust => "Rust",
+            SpaceColor::Denim => "Denim",
+        }
+    }
+
+    pub const ALL: [SpaceColor; 8] = [
+        SpaceColor::Clay,
+        SpaceColor::Sage,
+        SpaceColor::Slate,
+        SpaceColor::Amber,
+        SpaceColor::Plum,
+        SpaceColor::Teal,
+        SpaceColor::Rust,
+        SpaceColor::Denim,
+    ];
+}
+
+impl TaskStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TaskStatus::Todo => "todo",
+            TaskStatus::InProgress => "in_progress",
+            TaskStatus::Blocked => "blocked",
+            TaskStatus::Done => "done",
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            TaskStatus::Todo => "To do",
+            TaskStatus::InProgress => "In progress",
+            TaskStatus::Blocked => "Blocked",
+            TaskStatus::Done => "Done",
+        }
+    }
+
+    pub const ALL: [TaskStatus; 4] = [
+        TaskStatus::Todo,
+        TaskStatus::InProgress,
+        TaskStatus::Blocked,
+        TaskStatus::Done,
+    ];
+}
+
+impl TaskPriority {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TaskPriority::Low => "low",
+            TaskPriority::Normal => "normal",
+            TaskPriority::High => "high",
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            TaskPriority::Low => "Low",
+            TaskPriority::Normal => "Normal",
+            TaskPriority::High => "High",
+        }
+    }
+
+    pub const ALL: [TaskPriority; 3] = [TaskPriority::Low, TaskPriority::Normal, TaskPriority::High];
+}

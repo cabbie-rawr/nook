@@ -1,0 +1,21 @@
+<section class="card card-jumpback" data-card="jump_back_in" tabindex="0" draggable="true" aria-labelledby="card-jump_back_in-label">
+  <h2 class="card-label" id="card-jump_back_in-label">Jump Back In</h2>
+  <div class="card-body">
+    {% if items.is_empty() %}
+    <p class="empty-state">Tasks and files you open will show up here for quick return.</p>
+    {% else %}
+    <ul class="jump-row">
+      {% for item in items %}
+      <li>
+        <a href="/tasks/{{ item.task_id }}" class="jump-card">
+          <span class="jump-icon" aria-hidden="true">{% if item.kind == "file" %}📎{% else %}📋{% endif %}</span>
+          <span class="jump-title">{{ item.title }}</span>
+          <span class="jump-meta"><span class="dot dot-{{ item.space_color }}" aria-hidden="true"></span>{{ item.space_name }}</span>
+          <span class="jump-when">{{ item.when_label }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</section>

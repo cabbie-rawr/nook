@@ -1,0 +1,21 @@
+{% if show %}
+<section class="card card-getting-started" data-card="getting_started" tabindex="0" draggable="true" aria-labelledby="card-getting_started-label">
+  <h2 class="card-label" id="card-getting_started-label">Getting Started</h2>
+  <div class="card-body">
+    <div class="getting-started-row">
+      <div class="progress-ring" style="--pct:{{ completed_count * 100 / total }}" role="img" aria-label="{{ completed_count }} of {{ total }} steps complete">
+        <span>{{ completed_count }}/{{ total }}</span>
+      </div>
+      <button class="link-button" type="button" data-dismiss-onboarding>Dismiss</button>
+    </div>
+    <ul class="checklist">
+      {% for item in items %}
+      <li class="{% if item.1 %}is-done{% endif %}">
+        <span class="checklist-mark" aria-hidden="true">{% if item.1 %}✓{% else %}○{% endif %}</span>
+        {{ item.0 }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% endif %}

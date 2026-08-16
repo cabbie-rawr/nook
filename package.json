@@ -1,0 +1,12 @@
+{
+  "name": "nook",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Nook is a Rust/Axum app, not a Node project. These npm scripts just wrap the equivalent Cargo commands so `npm run dev` etc. work without changing habits — there are no JS dependencies and no node_modules.",
+  "scripts": {
+    "dev": "cargo run",
+    "build": "cargo build --release",
+    "start": "cargo run --release",
+    "test": "cargo test"
+  }
+}

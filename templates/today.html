@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Today · Nook{% endblock %}
+
+{% block nav %}
+<nav class="primary-nav" aria-label="Primary">
+  <a href="/" data-nav="today" class="is-active">Today</a>
+  <a href="/spaces" data-nav="spaces">Spaces</a>
+  <a href="/calendar" data-nav="calendar">Calendar</a>
+</nav>
+<button class="palette-trigger" type="button" data-open-palette aria-haspopup="dialog" aria-controls="command-palette">
+  <span>Search</span><kbd>⌘K</kbd>
+</button>
+<div class="nav-right">
+  <span class="muted">{{ display_name }}</span>
+  <form method="post" action="/logout"><button class="link-button" type="submit">Log out</button></form>
+</div>
+{% endblock %}
+
+{% block content %}
+<script id="spaces-data" type="application/json">{{ spaces_json|safe }}</script>
+
+<div class="bento" id="bento" data-layout-endpoint="/api/layout">
+  {% for key in order %}
+
+  {% if key == "focus" %}
+  <section class="card card-skeleton" data-card="focus" tabindex="0" draggable="true" style="animation-delay: calc({{ loop.index0 }} * 30ms)" aria-labelledby="card-focus-label"
+            hx-get="/partials/focus" hx-trigger="load" hx-swap="outerHTML">
+    <h2 class="card-label" id="card-focus-label">Focus</h2>
+    <div class="card-body">
+      <div class="skeleton-line" style="width:60%"></div>
+      <div class="skeleton-line" style="width:40%"></div>
+      <div class="skeleton-block" style="height:32px;width:160px;margin-top:16px"></div>
+    </div>
+  </section>
+
+  {% else if key == "up_next" %}
+  <section class="card card-skeleton" data-card="up_next" tabindex="0" draggable="true" style="animation-delay: calc({{ loop.index0 }} * 30ms)" aria-labelledby="card-up_next-label"
+            hx-get="/partials/up_next" hx-trigger="load" hx-swap="outerHTML">
+    <h2 class="card-label" id="card-up_next-label">Up Next</h2>
+    <div class="card-body">
+      {% for _ in 0..4 %}<div class="skeleton-line"></div>{% endfor %}
+    </div>
+  </section>
+
+  {% else if key == "due_soon" %}
+  <section class="card card-skeleton" data-card="due_soon" tabindex="0" draggable="true" style="animation-delay: calc({{ loop.index0 }} * 30ms)" aria-labelledby="card-due_soon-label"
+            hx-get="/partials/due_soon" hx-trigger="load" hx-swap="outerHTML">
+    <h2 class="card-label" id="card-due_soon-label">Due Soon</h2>
+    <div class="card-body">
+      {% for _ in 0..5 %}<div class="skeleton-line"></div>{% endfor %}
+    </div>
+  </section>
+
+  {% else if key == "momentum" %}
+  <section class="card card-skeleton" data-card="momentum" tabindex="0" draggable="true" style="animation-delay: calc({{ loop.index0 }} * 30ms)" aria-labelledby="card-momentum-label"
+            hx-get="/partials/momentum" hx-trigger="load" hx-swap="outerHTML">
+    <h2 class="card-label" id="card-momentum-label">Momentum</h2>
+    <div class="card-body">
+      <div class="skeleton-block" style="height:88px"></div>
+      <div class="skeleton-line" style="width:50%;margin-top:12px"></div>
+    </div>
+  </section>
+
+  {% else if key == "jump_back_in" %}
+  <section class="card card-skeleton" data-card="jump_back_in" tabindex="0" draggable="true" style="animation-delay: calc({{ loop.index0 }} * 30ms)" aria-labelledby="card-jump_back_in-label"
+            hx-get="/partials/jump_back_in" hx-trigger="load" hx-swap="outerHTML">
+    <h2 class="card-label" id="card-jump_back_in-label">Jump Back In</h2>
+    <div class="card-body row-skeleton">
+      {% for _ in 0..5 %}<div class="skeleton-block" style="height:72px;width:150px;flex:none"></div>{% endfor %}
+    </div>
+  </section>
+
+  {% else if key == "space_progress" %}
+  <section class="card card-skeleton" data-card="space_progress" tabindex="0" draggable="true" style="animation-delay: calc({{ loop.index0 }} * 30ms)" aria-labelledby="card-space_progress-label"
+            hx-get="/partials/space_progress" hx-trigger="load" hx-swap="outerHTML">
+    <h2 class="card-label" id="card-space_progress-label">Space Progress</h2>
+    <div class="card-body">
+      {% for _ in 0..3 %}<div class="skeleton-line"></div>{% endfor %}
+    </div>
+  </section>
+
+  {% else if key == "getting_started" %}
+  <section class="card card-skeleton" data-card="getting_started" tabindex="0" draggable="true" style="animation-delay: calc({{ loop.index0 }} * 30ms)" aria-labelledby="card-getting_started-label"
+            hx-get="/partials/getting_started" hx-trigger="load" hx-swap="outerHTML">
+    <h2 class="card-label" id="card-getting_started-label">Getting Started</h2>
+    <div class="card-body">
+      <div class="skeleton-line" style="width:70%"></div>
+    </div>
+  </section>
+  {% endif %}
+
+  {% endfor %}
+</div>
+{% endblock %}

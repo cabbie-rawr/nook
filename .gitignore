@@ -4,3 +4,6 @@
 .env
 /storage/*
 !/storage/.gitkeep
+.run-stdout.log
+.run-stderr.log
+
