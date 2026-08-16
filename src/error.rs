@@ -20,12 +20,6 @@ pub enum AppError {
     BadRequest(String),
     #[error(transparent)]
     Database(#[from] sqlx::Error),
-    /// Supabase Auth rejected a signup/login (bad credentials, weak password,
-    /// already-registered email, ...) — `String` is its human-readable message.
-    #[error("{0}")]
-    Auth(String),
-    #[error(transparent)]
-    Http(#[from] reqwest::Error),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -36,13 +30,8 @@ impl IntoResponse for AppError {
             AppError::Unauthorized => Redirect::to("/login").into_response(),
             AppError::NotFound => (StatusCode::NOT_FOUND, "not found").into_response(),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg).into_response(),
-            AppError::Auth(msg) => (StatusCode::BAD_REQUEST, msg).into_response(),
             AppError::Database(err) => {
                 tracing::error!(?err, "database error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "something went wrong").into_response()
-            }
-            AppError::Http(err) => {
-                tracing::error!(?err, "supabase request failed");
                 (StatusCode::INTERNAL_SERVER_ERROR, "something went wrong").into_response()
             }
             AppError::Other(err) => {

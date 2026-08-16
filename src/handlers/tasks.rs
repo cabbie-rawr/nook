@@ -4,8 +4,7 @@ use axum::response::{Html, IntoResponse, Redirect};
 use axum::{http::StatusCode, Form};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::Deserialize;
-use sqlx::PgPool;
-use uuid::Uuid;
+use sqlx::SqlitePool;
 
 use crate::auth::CurrentUser;
 use crate::error::AppError;
@@ -45,10 +44,10 @@ fn parse_due_at(raw: &str) -> Result<Option<DateTime<Utc>>, AppError> {
 }
 
 /// Confirms `task_id` belongs (through its space) to `user_id`.
-async fn assert_owns_task(pool: &PgPool, task_id: i64, user_id: Uuid) -> Result<(), AppError> {
+async fn assert_owns_task(pool: &SqlitePool, task_id: i64, user_id: i64) -> Result<(), AppError> {
     let found = sqlx::query_scalar::<_, i64>(
         "SELECT tasks.id FROM tasks JOIN spaces ON spaces.id = tasks.space_id
-         WHERE tasks.id = $1 AND spaces.user_id = $2",
+         WHERE tasks.id = ? AND spaces.user_id = ?",
     )
     .bind(task_id)
     .bind(user_id)
@@ -63,7 +62,7 @@ pub async fn create_task(
     Path(space_id): Path<i64>,
     Form(form): Form<CreateTaskForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    let owns_space = sqlx::query_scalar::<_, i64>("SELECT id FROM spaces WHERE id = $1 AND user_id = $2")
+    let owns_space = sqlx::query_scalar::<_, i64>("SELECT id FROM spaces WHERE id = ? AND user_id = ?")
         .bind(space_id)
         .bind(user.id)
         .fetch_optional(&state.pool)
@@ -78,7 +77,7 @@ pub async fn create_task(
     }
     let due_at = parse_due_at(&form.due_at)?;
 
-    sqlx::query("INSERT INTO tasks (space_id, title, notes, priority, due_at) VALUES ($1, $2, $3, $4, $5)")
+    sqlx::query("INSERT INTO tasks (space_id, title, notes, priority, due_at) VALUES (?, ?, ?, ?, ?)")
         .bind(space_id)
         .bind(title)
         .bind(form.notes.trim().to_string())
@@ -104,7 +103,7 @@ pub async fn update_status(
     assert_owns_task(&state.pool, task_id, user.id).await?;
 
     let completed_at = matches!(form.status, TaskStatus::Done).then(Utc::now);
-    sqlx::query("UPDATE tasks SET status = $1, completed_at = $2, updated_at = $3 WHERE id = $4")
+    sqlx::query("UPDATE tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?")
         .bind(form.status)
         .bind(completed_at)
         .bind(Utc::now())
@@ -112,7 +111,7 @@ pub async fn update_status(
         .execute(&state.pool)
         .await?;
 
-    let task = sqlx::query_as::<_, Task>("SELECT * FROM tasks WHERE id = $1")
+    let task = sqlx::query_as::<_, Task>("SELECT * FROM tasks WHERE id = ?")
         .bind(task_id)
         .fetch_one(&state.pool)
         .await?;
@@ -130,7 +129,7 @@ pub async fn delete_task(
     Path(task_id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
     assert_owns_task(&state.pool, task_id, user.id).await?;
-    sqlx::query("DELETE FROM tasks WHERE id = $1")
+    sqlx::query("DELETE FROM tasks WHERE id = ?")
         .bind(task_id)
         .execute(&state.pool)
         .await?;

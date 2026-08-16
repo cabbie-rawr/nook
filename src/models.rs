@@ -1,19 +1,14 @@
-//! Row types for every table in `migrations/0001_supabase_init.sql`.
+//! Row types for every table in `migrations/0001_initial_schema.sql`.
 //!
 //! Enums derive `sqlx::Type` and are stored as their (snake_case) variant name
-//! in a `text` column — this matches the `check (col in (...))` constraints in
+//! in a `TEXT` column — this matches the `CHECK (col IN (...))` constraints in
 //! the migration exactly, so an invalid string can't reach the database from
-//! either direction. Timestamps are `DateTime<Utc>` (Postgres `timestamptz`);
+//! either direction. Timestamps are `DateTime<Utc>` stored as ISO-8601 TEXT;
 //! `start_time`/`end_time` on schedule blocks are wall-clock `NaiveTime`
-//! (Postgres `time`), deliberately not tied to a date.
-//!
-//! `User.id` and every `user_id` column are `Uuid` — Supabase Auth owns the
-//! identity table (`auth.users`) and mints its own UUID per account; there's
-//! no local `password_hash`/`sessions` table anymore (see `auth.rs`).
+//! ("HH:MM"), deliberately not tied to a date.
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -73,14 +68,12 @@ pub enum TaskPriority {
 // Tables
 // ---------------------------------------------------------------------------
 
-/// The logged-in user: `id`/`email` come from the verified Supabase JWT, the
-/// rest from the `profiles` row that's created automatically on signup
-/// (see `supabase/schema.sql`'s `handle_new_user` trigger). Not an
-/// `sqlx::FromRow` itself — `auth.rs` assembles it from those two sources.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct User {
-    pub id: Uuid,
+    pub id: i64,
     pub email: String,
+    #[serde(skip_serializing)]
+    pub password_hash: String,
     pub display_name: String,
     pub mode: UserMode,
     pub timezone: String,
@@ -88,21 +81,18 @@ pub struct User {
     pub created_at: DateTime<Utc>,
 }
 
-/// The `profiles` table row, before the JWT's id/email are joined in above.
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
-pub struct Profile {
-    pub id: Uuid,
-    pub display_name: String,
-    pub mode: UserMode,
-    pub timezone: String,
-    pub theme_preference: ThemePreference,
+pub struct Session {
+    pub id: String,
+    pub user_id: i64,
     pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct Space {
     pub id: i64,
-    pub user_id: Uuid,
+    pub user_id: i64,
     pub name: String,
     pub color: SpaceColor,
     pub icon: String,
@@ -151,7 +141,7 @@ pub struct Attachment {
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct ScheduleBlock {
     pub id: i64,
-    pub user_id: Uuid,
+    pub user_id: i64,
     pub space_id: Option<i64>,
     pub title: String,
     pub day_of_week: Option<i64>, // 0=Sunday .. 6=Saturday, set when recurring
@@ -165,7 +155,7 @@ pub struct ScheduleBlock {
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct Tag {
     pub id: i64,
-    pub user_id: Uuid,
+    pub user_id: i64,
     pub name: String,
 }
 
@@ -177,14 +167,14 @@ pub struct TaskTag {
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct UserLayout {
-    pub user_id: Uuid,
+    pub user_id: i64,
     pub layout: String,
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct OnboardingState {
-    pub user_id: Uuid,
+    pub user_id: i64,
     pub dismissed: bool,
 }
 

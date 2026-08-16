@@ -54,7 +54,7 @@ fn error_card(key: &str, label: &str) -> String {
 }
 
 pub async fn shell(CurrentUser(user): CurrentUser, State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
-    let stored = sqlx::query_scalar::<_, String>("SELECT layout FROM user_layout WHERE user_id = $1")
+    let stored = sqlx::query_scalar::<_, String>("SELECT layout FROM user_layout WHERE user_id = ?")
         .bind(user.id)
         .fetch_optional(&state.pool)
         .await?;
@@ -74,7 +74,7 @@ pub async fn shell(CurrentUser(user): CurrentUser, State(state): State<AppState>
         color: &'static str,
     }
     let spaces = sqlx::query_as::<_, (i64, String, SpaceColor)>(
-        "SELECT id, name, color FROM spaces WHERE user_id = $1 AND archived_at IS NULL ORDER BY name ASC",
+        "SELECT id, name, color FROM spaces WHERE user_id = ? AND archived_at IS NULL ORDER BY name ASC",
     )
     .bind(user.id)
     .fetch_all(&state.pool)
@@ -125,9 +125,9 @@ async fn focus_inner(user: User, state: AppState) -> Result<String, AppError> {
     let active_block = sqlx::query_as::<_, (String, NaiveTime, Option<SpaceColor>)>(
         r#"SELECT schedule_blocks.title, schedule_blocks.end_time, spaces.color
            FROM schedule_blocks LEFT JOIN spaces ON spaces.id = schedule_blocks.space_id
-           WHERE schedule_blocks.user_id = $1 AND schedule_blocks.start_time <= $2 AND schedule_blocks.end_time >= $3
-             AND ((schedule_blocks.recurring = true AND schedule_blocks.day_of_week = $4)
-                  OR (schedule_blocks.recurring = false AND schedule_blocks.specific_date = $5))
+           WHERE schedule_blocks.user_id = ? AND schedule_blocks.start_time <= ? AND schedule_blocks.end_time >= ?
+             AND ((schedule_blocks.recurring = 1 AND schedule_blocks.day_of_week = ?)
+                  OR (schedule_blocks.recurring = 0 AND schedule_blocks.specific_date = ?))
            LIMIT 1"#,
     )
     .bind(user.id)
@@ -150,7 +150,7 @@ async fn focus_inner(user: User, state: AppState) -> Result<String, AppError> {
         let nearest = sqlx::query_as::<_, (i64, String, SpaceColor, DateTime<Utc>)>(
             r#"SELECT tasks.id, tasks.title, spaces.color, tasks.due_at FROM tasks
                JOIN spaces ON spaces.id = tasks.space_id
-               WHERE spaces.user_id = $1 AND tasks.status != 'done' AND tasks.due_at IS NOT NULL
+               WHERE spaces.user_id = ? AND tasks.status != 'done' AND tasks.due_at IS NOT NULL
                ORDER BY tasks.due_at ASC LIMIT 1"#,
         )
         .bind(user.id)
@@ -206,9 +206,9 @@ async fn up_next_inner(user: User, state: AppState) -> Result<String, AppError> 
     let blocks = sqlx::query_as::<_, (String, NaiveTime, NaiveTime, Option<SpaceColor>)>(
         r#"SELECT schedule_blocks.title, schedule_blocks.start_time, schedule_blocks.end_time, spaces.color
            FROM schedule_blocks LEFT JOIN spaces ON spaces.id = schedule_blocks.space_id
-           WHERE schedule_blocks.user_id = $1
-             AND ((schedule_blocks.recurring = true AND schedule_blocks.day_of_week = $2)
-                  OR (schedule_blocks.recurring = false AND schedule_blocks.specific_date = $3))"#,
+           WHERE schedule_blocks.user_id = ?
+             AND ((schedule_blocks.recurring = 1 AND schedule_blocks.day_of_week = ?)
+                  OR (schedule_blocks.recurring = 0 AND schedule_blocks.specific_date = ?))"#,
     )
     .bind(user.id)
     .bind(weekday)
@@ -219,8 +219,8 @@ async fn up_next_inner(user: User, state: AppState) -> Result<String, AppError> 
     let due_today = sqlx::query_as::<_, (String, DateTime<Utc>, SpaceColor)>(
         r#"SELECT tasks.title, tasks.due_at, spaces.color FROM tasks
            JOIN spaces ON spaces.id = tasks.space_id
-           WHERE spaces.user_id = $1 AND tasks.status != 'done' AND tasks.due_at IS NOT NULL
-             AND DATE(tasks.due_at) = DATE($2)"#,
+           WHERE spaces.user_id = ? AND tasks.status != 'done' AND tasks.due_at IS NOT NULL
+             AND DATE(tasks.due_at) = DATE(?)"#,
     )
     .bind(user.id)
     .bind(now)
@@ -295,7 +295,7 @@ async fn due_soon_inner(user: User, state: AppState) -> Result<String, AppError>
         r#"SELECT tasks.id, tasks.title, tasks.due_at, spaces.color as space_color,
                   (SELECT COUNT(*) FROM attachments WHERE attachments.task_id = tasks.id) as attachment_count
            FROM tasks JOIN spaces ON spaces.id = tasks.space_id
-           WHERE spaces.user_id = $1 AND tasks.status != 'done' AND tasks.due_at IS NOT NULL AND tasks.due_at <= $2
+           WHERE spaces.user_id = ? AND tasks.status != 'done' AND tasks.due_at IS NOT NULL AND tasks.due_at <= ?
            ORDER BY tasks.due_at ASC"#,
     )
     .bind(user.id)
@@ -367,12 +367,10 @@ async fn momentum_inner(user: User, state: AppState) -> Result<String, AppError>
     let today = now.date_naive();
     let start = today - Duration::days(83);
 
-    // `DATE(...)` returns a Postgres `date`, decoded straight into `NaiveDate`
-    // — no manual `%Y-%m-%d` parsing needed the way SQLite's TEXT return did.
-    let rows = sqlx::query_as::<_, (NaiveDate, i64)>(
+    let rows = sqlx::query_as::<_, (String, i64)>(
         r#"SELECT DATE(tasks.completed_at) as d, COUNT(*) as c FROM tasks
            JOIN spaces ON spaces.id = tasks.space_id
-           WHERE spaces.user_id = $1 AND tasks.completed_at IS NOT NULL AND DATE(tasks.completed_at) >= $2
+           WHERE spaces.user_id = ? AND tasks.completed_at IS NOT NULL AND DATE(tasks.completed_at) >= ?
            GROUP BY d"#,
     )
     .bind(user.id)
@@ -381,8 +379,10 @@ async fn momentum_inner(user: User, state: AppState) -> Result<String, AppError>
     .await?;
 
     let mut counts: HashMap<NaiveDate, i64> = HashMap::new();
-    for (date, c) in rows {
-        counts.insert(date, c);
+    for (d, c) in rows {
+        if let Ok(date) = NaiveDate::parse_from_str(&d, "%Y-%m-%d") {
+            counts.insert(date, c);
+        }
     }
 
     let grid_start = start - Duration::days(start.weekday().num_days_from_sunday() as i64);
@@ -423,7 +423,7 @@ async fn momentum_inner(user: User, state: AppState) -> Result<String, AppError>
     let month_start = today.with_day(1).unwrap_or(today);
     let completed_this_month = sqlx::query_scalar::<_, i64>(
         r#"SELECT COUNT(*) FROM tasks JOIN spaces ON spaces.id = tasks.space_id
-           WHERE spaces.user_id = $1 AND tasks.completed_at IS NOT NULL AND DATE(tasks.completed_at) >= $2"#,
+           WHERE spaces.user_id = ? AND tasks.completed_at IS NOT NULL AND DATE(tasks.completed_at) >= ?"#,
     )
     .bind(user.id)
     .bind(month_start)
@@ -457,7 +457,7 @@ async fn jump_back_in_inner(user: User, state: AppState) -> Result<String, AppEr
     let tasks = sqlx::query_as::<_, (i64, String, String, SpaceColor, DateTime<Utc>)>(
         r#"SELECT tasks.id, tasks.title, spaces.name, spaces.color, tasks.last_opened_at
            FROM tasks JOIN spaces ON spaces.id = tasks.space_id
-           WHERE spaces.user_id = $1 AND tasks.last_opened_at IS NOT NULL
+           WHERE spaces.user_id = ? AND tasks.last_opened_at IS NOT NULL
            ORDER BY tasks.last_opened_at DESC LIMIT 5"#,
     )
     .bind(user.id)
@@ -467,7 +467,7 @@ async fn jump_back_in_inner(user: User, state: AppState) -> Result<String, AppEr
     let files = sqlx::query_as::<_, (i64, i64, String, String, SpaceColor, DateTime<Utc>)>(
         r#"SELECT attachments.id, attachments.task_id, attachments.original_filename, spaces.name, spaces.color, attachments.uploaded_at
            FROM attachments JOIN tasks ON tasks.id = attachments.task_id JOIN spaces ON spaces.id = tasks.space_id
-           WHERE spaces.user_id = $1 ORDER BY attachments.uploaded_at DESC LIMIT 5"#,
+           WHERE spaces.user_id = ? ORDER BY attachments.uploaded_at DESC LIMIT 5"#,
     )
     .bind(user.id)
     .fetch_all(&state.pool)
@@ -541,7 +541,7 @@ async fn space_progress_inner(user: User, state: AppState) -> Result<String, App
                   COUNT(tasks.id) as total,
                   COALESCE(SUM(CASE WHEN tasks.status = 'done' THEN 1 ELSE 0 END), 0) as done
            FROM spaces LEFT JOIN tasks ON tasks.space_id = spaces.id
-           WHERE spaces.user_id = $1 AND spaces.archived_at IS NULL
+           WHERE spaces.user_id = ? AND spaces.archived_at IS NULL
            GROUP BY spaces.id ORDER BY spaces.created_at DESC"#,
     )
     .bind(user.id)
@@ -573,18 +573,18 @@ pub async fn getting_started(CurrentUser(user): CurrentUser, State(state): State
 }
 
 async fn getting_started_inner(user: User, state: AppState) -> Result<String, AppError> {
-    let space_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM spaces WHERE user_id = $1")
+    let space_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM spaces WHERE user_id = ?")
         .bind(user.id)
         .fetch_one(&state.pool)
         .await?;
     let task_count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM tasks JOIN spaces ON spaces.id = tasks.space_id WHERE spaces.user_id = $1",
+        "SELECT COUNT(*) FROM tasks JOIN spaces ON spaces.id = tasks.space_id WHERE spaces.user_id = ?",
     )
     .bind(user.id)
     .fetch_one(&state.pool)
     .await?;
     let has_deadline = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM tasks JOIN spaces ON spaces.id = tasks.space_id WHERE spaces.user_id = $1 AND tasks.due_at IS NOT NULL",
+        "SELECT COUNT(*) FROM tasks JOIN spaces ON spaces.id = tasks.space_id WHERE spaces.user_id = ? AND tasks.due_at IS NOT NULL",
     )
     .bind(user.id)
     .fetch_one(&state.pool)
@@ -592,19 +592,19 @@ async fn getting_started_inner(user: User, state: AppState) -> Result<String, Ap
         > 0;
     let has_attachment = sqlx::query_scalar::<_, i64>(
         r#"SELECT COUNT(*) FROM attachments JOIN tasks ON tasks.id = attachments.task_id
-           JOIN spaces ON spaces.id = tasks.space_id WHERE spaces.user_id = $1"#,
+           JOIN spaces ON spaces.id = tasks.space_id WHERE spaces.user_id = ?"#,
     )
     .bind(user.id)
     .fetch_one(&state.pool)
     .await?
         > 0;
-    let has_schedule = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM schedule_blocks WHERE user_id = $1")
+    let has_schedule = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM schedule_blocks WHERE user_id = ?")
         .bind(user.id)
         .fetch_one(&state.pool)
         .await?
         > 0;
 
-    let dismissed = sqlx::query_scalar::<_, bool>("SELECT dismissed FROM onboarding_state WHERE user_id = $1")
+    let dismissed = sqlx::query_scalar::<_, bool>("SELECT dismissed FROM onboarding_state WHERE user_id = ?")
         .bind(user.id)
         .fetch_optional(&state.pool)
         .await?
@@ -632,8 +632,8 @@ pub async fn dismiss_onboarding(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AppError> {
     sqlx::query(
-        "INSERT INTO onboarding_state (user_id, dismissed) VALUES ($1, true)
-         ON CONFLICT (user_id) DO UPDATE SET dismissed = true",
+        "INSERT INTO onboarding_state (user_id, dismissed) VALUES (?, 1)
+         ON CONFLICT(user_id) DO UPDATE SET dismissed = 1",
     )
     .bind(user.id)
     .execute(&state.pool)
@@ -672,7 +672,7 @@ pub async fn search(
         let recent = sqlx::query_as::<_, (i64, String, String)>(
             r#"SELECT tasks.id, tasks.title, spaces.name FROM tasks
                JOIN spaces ON spaces.id = tasks.space_id
-               WHERE spaces.user_id = $1 AND tasks.last_opened_at IS NOT NULL
+               WHERE spaces.user_id = ? AND tasks.last_opened_at IS NOT NULL
                ORDER BY tasks.last_opened_at DESC LIMIT 5"#,
         )
         .bind(user.id)
@@ -683,12 +683,10 @@ pub async fn search(
         }
     } else {
         let like = format!("%{query}%");
-        // ILIKE (not LIKE) to keep the case-insensitive matching SQLite's
-        // LIKE gave us for free on ASCII.
         let tasks = sqlx::query_as::<_, (i64, String, String)>(
             r#"SELECT tasks.id, tasks.title, spaces.name FROM tasks
                JOIN spaces ON spaces.id = tasks.space_id
-               WHERE spaces.user_id = $1 AND tasks.title ILIKE $2 ORDER BY tasks.updated_at DESC LIMIT 6"#,
+               WHERE spaces.user_id = ? AND tasks.title LIKE ? ORDER BY tasks.updated_at DESC LIMIT 6"#,
         )
         .bind(user.id)
         .bind(&like)
@@ -699,7 +697,7 @@ pub async fn search(
         }
 
         let spaces = sqlx::query_as::<_, (i64, String)>(
-            "SELECT id, name FROM spaces WHERE user_id = $1 AND archived_at IS NULL AND name ILIKE $2 ORDER BY name ASC LIMIT 4",
+            "SELECT id, name FROM spaces WHERE user_id = ? AND archived_at IS NULL AND name LIKE ? ORDER BY name ASC LIMIT 4",
         )
         .bind(user.id)
         .bind(&like)
@@ -719,7 +717,7 @@ pub struct LayoutBody {
 }
 
 pub async fn get_layout(CurrentUser(user): CurrentUser, State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
-    let layout = sqlx::query_scalar::<_, String>("SELECT layout FROM user_layout WHERE user_id = $1")
+    let layout = sqlx::query_scalar::<_, String>("SELECT layout FROM user_layout WHERE user_id = ?")
         .bind(user.id)
         .fetch_optional(&state.pool)
         .await?
@@ -735,8 +733,8 @@ pub async fn save_layout(
     let cleaned: Vec<String> = body.order.into_iter().filter(|k| DEFAULT_ORDER.contains(&k.as_str())).collect();
     let layout = serde_json::to_string(&cleaned).unwrap_or_else(|_| "[]".to_string());
     sqlx::query(
-        "INSERT INTO user_layout (user_id, layout, updated_at) VALUES ($1, $2, $3)
-         ON CONFLICT (user_id) DO UPDATE SET layout = excluded.layout, updated_at = excluded.updated_at",
+        "INSERT INTO user_layout (user_id, layout, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET layout = excluded.layout, updated_at = excluded.updated_at",
     )
     .bind(user.id)
     .bind(layout)

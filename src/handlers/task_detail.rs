@@ -9,7 +9,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -21,10 +21,10 @@ use crate::templates::TaskDetailTemplate;
 use crate::view::TaskView;
 
 /// Confirms `task_id` belongs (through its space) to `user_id`.
-async fn assert_owns_task(pool: &PgPool, task_id: i64, user_id: Uuid) -> Result<(), AppError> {
+async fn assert_owns_task(pool: &SqlitePool, task_id: i64, user_id: i64) -> Result<(), AppError> {
     let found = sqlx::query_scalar::<_, i64>(
         "SELECT tasks.id FROM tasks JOIN spaces ON spaces.id = tasks.space_id
-         WHERE tasks.id = $1 AND spaces.user_id = $2",
+         WHERE tasks.id = ? AND spaces.user_id = ?",
     )
     .bind(task_id)
     .bind(user_id)
@@ -40,7 +40,7 @@ pub async fn show(
 ) -> Result<impl IntoResponse, AppError> {
     let task = sqlx::query_as::<_, Task>(
         r#"SELECT tasks.* FROM tasks JOIN spaces ON spaces.id = tasks.space_id
-           WHERE tasks.id = $1 AND spaces.user_id = $2"#,
+           WHERE tasks.id = ? AND spaces.user_id = ?"#,
     )
     .bind(task_id)
     .bind(user.id)
@@ -49,24 +49,24 @@ pub async fn show(
     .ok_or(AppError::NotFound)?;
 
     let (space_name, space_color): (String, crate::models::SpaceColor) =
-        sqlx::query_as("SELECT name, color FROM spaces WHERE id = $1")
+        sqlx::query_as("SELECT name, color FROM spaces WHERE id = ?")
             .bind(task.space_id)
             .fetch_one(&state.pool)
             .await?;
 
-    sqlx::query("UPDATE tasks SET last_opened_at = $1 WHERE id = $2")
+    sqlx::query("UPDATE tasks SET last_opened_at = ? WHERE id = ?")
         .bind(Utc::now())
         .bind(task_id)
         .execute(&state.pool)
         .await?;
 
-    let steps = sqlx::query_as::<_, PlanStep>("SELECT * FROM plan_steps WHERE task_id = $1 ORDER BY position ASC")
+    let steps = sqlx::query_as::<_, PlanStep>("SELECT * FROM plan_steps WHERE task_id = ? ORDER BY position ASC")
         .bind(task_id)
         .fetch_all(&state.pool)
         .await?;
 
     let attachments =
-        sqlx::query_as::<_, Attachment>("SELECT * FROM attachments WHERE task_id = $1 ORDER BY uploaded_at DESC")
+        sqlx::query_as::<_, Attachment>("SELECT * FROM attachments WHERE task_id = ? ORDER BY uploaded_at DESC")
             .bind(task_id)
             .fetch_all(&state.pool)
             .await?;
@@ -99,13 +99,13 @@ pub async fn create_step(
         return Err(AppError::BadRequest("Step text can't be empty.".into()));
     }
     let next_position = sqlx::query_scalar::<_, i64>(
-        "SELECT COALESCE(MAX(position), -1) + 1 FROM plan_steps WHERE task_id = $1",
+        "SELECT COALESCE(MAX(position), -1) + 1 FROM plan_steps WHERE task_id = ?",
     )
     .bind(task_id)
     .fetch_one(&state.pool)
     .await?;
 
-    sqlx::query("INSERT INTO plan_steps (task_id, position, text) VALUES ($1, $2, $3)")
+    sqlx::query("INSERT INTO plan_steps (task_id, position, text) VALUES (?, ?, ?)")
         .bind(task_id)
         .bind(next_position)
         .bind(text)
@@ -115,12 +115,12 @@ pub async fn create_step(
     Ok(Redirect::to(&format!("/tasks/{task_id}")))
 }
 
-async fn assert_owns_step(pool: &PgPool, step_id: i64, user_id: Uuid) -> Result<i64, AppError> {
+async fn assert_owns_step(pool: &SqlitePool, step_id: i64, user_id: i64) -> Result<i64, AppError> {
     sqlx::query_scalar::<_, i64>(
         "SELECT plan_steps.task_id FROM plan_steps
          JOIN tasks ON tasks.id = plan_steps.task_id
          JOIN spaces ON spaces.id = tasks.space_id
-         WHERE plan_steps.id = $1 AND spaces.user_id = $2",
+         WHERE plan_steps.id = ? AND spaces.user_id = ?",
     )
     .bind(step_id)
     .bind(user_id)
@@ -135,11 +135,11 @@ pub async fn toggle_step(
     Path(step_id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
     assert_owns_step(&state.pool, step_id, user.id).await?;
-    sqlx::query("UPDATE plan_steps SET done = NOT done WHERE id = $1")
+    sqlx::query("UPDATE plan_steps SET done = NOT done WHERE id = ?")
         .bind(step_id)
         .execute(&state.pool)
         .await?;
-    let step = sqlx::query_as::<_, PlanStep>("SELECT * FROM plan_steps WHERE id = $1")
+    let step = sqlx::query_as::<_, PlanStep>("SELECT * FROM plan_steps WHERE id = ?")
         .bind(step_id)
         .fetch_one(&state.pool)
         .await?;
@@ -152,7 +152,7 @@ pub async fn delete_step(
     Path(step_id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
     assert_owns_step(&state.pool, step_id, user.id).await?;
-    sqlx::query("DELETE FROM plan_steps WHERE id = $1").bind(step_id).execute(&state.pool).await?;
+    sqlx::query("DELETE FROM plan_steps WHERE id = ?").bind(step_id).execute(&state.pool).await?;
     Ok(StatusCode::OK)
 }
 
@@ -173,7 +173,7 @@ pub async fn plan_steps_json(
     Path(task_id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
     assert_owns_task(&state.pool, task_id, user.id).await?;
-    let steps = sqlx::query_as::<_, PlanStep>("SELECT * FROM plan_steps WHERE task_id = $1 ORDER BY position ASC")
+    let steps = sqlx::query_as::<_, PlanStep>("SELECT * FROM plan_steps WHERE task_id = ? ORDER BY position ASC")
         .bind(task_id)
         .fetch_all(&state.pool)
         .await?;
@@ -237,7 +237,7 @@ pub async fn upload_attachment(
 
         sqlx::query(
             "INSERT INTO attachments (task_id, original_filename, stored_path, mime_type, size_bytes)
-             VALUES ($1, $2, $3, $4, $5)",
+             VALUES (?, ?, ?, ?, ?)",
         )
         .bind(task_id)
         .bind(&original_filename)
@@ -260,12 +260,12 @@ fn sanitize_filename(name: &str) -> String {
     name.chars().map(|c| if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' }).collect()
 }
 
-async fn owned_attachment(pool: &PgPool, attachment_id: i64, user_id: Uuid) -> Result<Attachment, AppError> {
+async fn owned_attachment(pool: &SqlitePool, attachment_id: i64, user_id: i64) -> Result<Attachment, AppError> {
     sqlx::query_as::<_, Attachment>(
         r#"SELECT attachments.* FROM attachments
            JOIN tasks ON tasks.id = attachments.task_id
            JOIN spaces ON spaces.id = tasks.space_id
-           WHERE attachments.id = $1 AND spaces.user_id = $2"#,
+           WHERE attachments.id = ? AND spaces.user_id = ?"#,
     )
     .bind(attachment_id)
     .bind(user_id)
@@ -301,7 +301,7 @@ pub async fn delete_attachment(
 ) -> Result<impl IntoResponse, AppError> {
     let attachment = owned_attachment(&state.pool, attachment_id, user.id).await?;
     let _ = tokio::fs::remove_file(storage_dir().join(&attachment.stored_path)).await;
-    sqlx::query("DELETE FROM attachments WHERE id = $1").bind(attachment_id).execute(&state.pool).await?;
+    sqlx::query("DELETE FROM attachments WHERE id = ?").bind(attachment_id).execute(&state.pool).await?;
     Ok(Redirect::to(&format!("/tasks/{}", attachment.task_id)))
 }
 
@@ -327,13 +327,13 @@ pub async fn log_minutes(
 ) -> Result<impl IntoResponse, AppError> {
     assert_owns_task(&state.pool, task_id, user.id).await?;
     let minutes = form.minutes.clamp(1, 24 * 60);
-    sqlx::query("UPDATE tasks SET logged_minutes = logged_minutes + $1, updated_at = $2 WHERE id = $3")
+    sqlx::query("UPDATE tasks SET logged_minutes = logged_minutes + ?, updated_at = ? WHERE id = ?")
         .bind(minutes)
         .bind(Utc::now())
         .bind(task_id)
         .execute(&state.pool)
         .await?;
-    let logged_minutes = sqlx::query_scalar::<_, i64>("SELECT logged_minutes FROM tasks WHERE id = $1")
+    let logged_minutes = sqlx::query_scalar::<_, i64>("SELECT logged_minutes FROM tasks WHERE id = ?")
         .bind(task_id)
         .fetch_one(&state.pool)
         .await?;
@@ -353,12 +353,12 @@ pub async fn complete_toggle(
 ) -> Result<impl IntoResponse, AppError> {
     assert_owns_task(&state.pool, task_id, user.id).await?;
     let current_status =
-        sqlx::query_scalar::<_, String>("SELECT status FROM tasks WHERE id = $1").bind(task_id).fetch_one(&state.pool).await?;
+        sqlx::query_scalar::<_, String>("SELECT status FROM tasks WHERE id = ?").bind(task_id).fetch_one(&state.pool).await?;
 
     let now_done = current_status != "done";
     let (new_status, completed_at) = if now_done { ("done", Some(Utc::now())) } else { ("todo", None) };
 
-    sqlx::query("UPDATE tasks SET status = $1, completed_at = $2, updated_at = $3 WHERE id = $4")
+    sqlx::query("UPDATE tasks SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?")
         .bind(new_status)
         .bind(completed_at)
         .bind(Utc::now())

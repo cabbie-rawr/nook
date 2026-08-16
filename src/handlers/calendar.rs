@@ -22,14 +22,14 @@ pub async fn show(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AppError> {
     let recurring = sqlx::query_as::<_, ScheduleBlock>(
-        "SELECT * FROM schedule_blocks WHERE user_id = $1 AND recurring = true ORDER BY day_of_week ASC, start_time ASC",
+        "SELECT * FROM schedule_blocks WHERE user_id = ? AND recurring = 1 ORDER BY day_of_week ASC, start_time ASC",
     )
     .bind(user.id)
     .fetch_all(&state.pool)
     .await?;
 
     let one_off = sqlx::query_as::<_, ScheduleBlock>(
-        "SELECT * FROM schedule_blocks WHERE user_id = $1 AND recurring = false AND specific_date >= CURRENT_DATE
+        "SELECT * FROM schedule_blocks WHERE user_id = ? AND recurring = 0 AND specific_date >= DATE('now')
          ORDER BY specific_date ASC, start_time ASC",
     )
     .bind(user.id)
@@ -37,7 +37,7 @@ pub async fn show(
     .await?;
 
     let spaces = sqlx::query_as::<_, Space>(
-        "SELECT * FROM spaces WHERE user_id = $1 AND archived_at IS NULL ORDER BY name ASC",
+        "SELECT * FROM spaces WHERE user_id = ? AND archived_at IS NULL ORDER BY name ASC",
     )
     .bind(user.id)
     .fetch_all(&state.pool)
@@ -116,7 +116,7 @@ pub async fn create(
     };
 
     if let Some(space_id) = form.space_id {
-        let owns = sqlx::query_scalar::<_, i64>("SELECT id FROM spaces WHERE id = $1 AND user_id = $2")
+        let owns = sqlx::query_scalar::<_, i64>("SELECT id FROM spaces WHERE id = ? AND user_id = ?")
             .bind(space_id)
             .bind(user.id)
             .fetch_optional(&state.pool)
@@ -128,7 +128,7 @@ pub async fn create(
 
     sqlx::query(
         "INSERT INTO schedule_blocks (user_id, space_id, title, day_of_week, start_time, end_time, recurring, specific_date)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(user.id)
     .bind(form.space_id)
@@ -149,7 +149,7 @@ pub async fn delete(
     State(state): State<AppState>,
     Path(block_id): Path<i64>,
 ) -> Result<impl IntoResponse, AppError> {
-    let result = sqlx::query("DELETE FROM schedule_blocks WHERE id = $1 AND user_id = $2")
+    let result = sqlx::query("DELETE FROM schedule_blocks WHERE id = ? AND user_id = ?")
         .bind(block_id)
         .bind(user.id)
         .execute(&state.pool)

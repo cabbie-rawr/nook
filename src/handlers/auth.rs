@@ -4,9 +4,9 @@ use axum::Form;
 use serde::Deserialize;
 use tower_cookies::Cookies;
 
-use crate::auth::{self, OptionalCurrentUser};
+use crate::auth::{end_session, hash_password, start_session, verify_password, OptionalCurrentUser};
 use crate::error::AppError;
-use crate::models::UserMode;
+use crate::models::{User, UserMode};
 use crate::state::AppState;
 use crate::templates::{LoginTemplate, SignupTemplate};
 
@@ -42,22 +42,30 @@ pub async fn signup(
         );
     }
 
-    let mode_str = match form.mode {
-        UserMode::Student => "student",
-        UserMode::Work => "work",
-    };
-
-    // The `profiles` row is created by Supabase's `on_auth_user_created`
-    // trigger (see supabase/schema.sql) the moment auth.users gets this
-    // row — nothing more to insert here.
-    match auth::sign_up(&state, &email, &form.password, &display_name, mode_str).await {
-        Ok(session) => {
-            auth::set_session_cookies(&cookies, &session);
-            Ok(Redirect::to("/").into_response())
-        }
-        Err(AppError::Auth(msg)) => Ok(SignupTemplate { error: Some(msg) }.into_response()),
-        Err(err) => Err(err),
+    let existing = sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE email = ?")
+        .bind(&email)
+        .fetch_optional(&state.pool)
+        .await?;
+    if existing.is_some() {
+        return Ok(SignupTemplate { error: Some("That email is already registered.".into()) }.into_response());
     }
+
+    let password_hash = hash_password(&form.password)?;
+
+    let user_id = sqlx::query_scalar::<_, i64>(
+        "INSERT INTO users (email, password_hash, display_name, mode) VALUES (?, ?, ?, ?) RETURNING id",
+    )
+    .bind(&email)
+    .bind(&password_hash)
+    .bind(&display_name)
+    .bind(form.mode)
+    .fetch_one(&state.pool)
+    .await?;
+
+    let cookie = start_session(&state.pool, user_id).await?;
+    cookies.add(cookie);
+
+    Ok(Redirect::to("/").into_response())
 }
 
 #[derive(Deserialize)]
@@ -66,11 +74,24 @@ pub struct LoginForm {
     pub password: String,
 }
 
-pub async fn login_form(OptionalCurrentUser(user): OptionalCurrentUser) -> impl IntoResponse {
+#[derive(Deserialize)]
+pub struct LoginQuery {
+    #[serde(default)]
+    pub oauth: Option<String>,
+}
+
+pub async fn login_form(
+    OptionalCurrentUser(user): OptionalCurrentUser,
+    Query(query): Query<LoginQuery>,
+) -> impl IntoResponse {
     if user.is_some() {
         return Redirect::to("/").into_response();
     }
-    LoginTemplate { error: None }.into_response()
+    let error = match query.oauth.as_deref() {
+        Some("unavailable") => Some("Google/GitHub sign-in isn't connected yet — use email for now.".to_string()),
+        _ => None,
+    };
+    LoginTemplate { error }.into_response()
 }
 
 pub async fn login(
@@ -80,90 +101,37 @@ pub async fn login(
 ) -> Result<impl IntoResponse, AppError> {
     let email = form.email.trim().to_lowercase();
 
-    match auth::sign_in(&state, &email, &form.password).await {
-        Ok(session) => {
-            auth::set_session_cookies(&cookies, &session);
-            Ok(Redirect::to("/").into_response())
-        }
-        // Same message regardless of *why* Supabase rejected it (unknown
-        // email vs. wrong password vs. unconfirmed) — matches the original
-        // handler's behavior of never letting a login attempt reveal which
-        // part was wrong.
-        Err(AppError::Auth(_)) => {
-            Ok(LoginTemplate { error: Some("Incorrect email or password.".into()) }.into_response())
-        }
-        Err(err) => Err(err),
+    let user = sqlx::query_as::<_, User>(
+        r#"SELECT id, email, password_hash, display_name, mode, timezone, theme_preference, created_at
+           FROM users WHERE email = ?"#,
+    )
+    .bind(&email)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let Some(user) = user else {
+        return Ok(LoginTemplate { error: Some("Incorrect email or password.".into()) }.into_response());
+    };
+    if !verify_password(&form.password, &user.password_hash) {
+        return Ok(LoginTemplate { error: Some("Incorrect email or password.".into()) }.into_response());
     }
+
+    let cookie = start_session(&state.pool, user.id).await?;
+    cookies.add(cookie);
+
+    Ok(Redirect::to("/").into_response())
 }
 
 pub async fn logout(State(state): State<AppState>, cookies: Cookies) -> Result<impl IntoResponse, AppError> {
-    if let Some(token) = cookies.get(auth::ACCESS_COOKIE).map(|c| c.value().to_string()) {
-        auth::sign_out(&state, &token).await;
-    }
-    auth::clear_session_cookies(&cookies);
+    end_session(&state.pool, &cookies).await?;
     Ok(Redirect::to("/login"))
 }
 
-// ---------------------------------------------------------------------------
-// OAuth (Google / GitHub) — /auth/oauth/:provider starts it, Supabase
-// redirects the browser through the provider and back to /auth/callback.
-// ---------------------------------------------------------------------------
-
-pub async fn oauth_start(
-    Path(provider): Path<String>,
-    State(state): State<AppState>,
-    cookies: Cookies,
-) -> Result<impl IntoResponse, AppError> {
-    if !auth::is_supported_oauth_provider(&provider) {
-        return Err(AppError::NotFound);
-    }
-
-    let (verifier, challenge) = auth::generate_pkce_pair();
-    auth::set_oauth_verifier_cookie(&cookies, &verifier);
-
-    let redirect_to = format!("{}/auth/callback", state.app_base_url);
-    let authorize_url = auth::oauth_authorize_url(&state, &provider, &challenge, &redirect_to);
-    Ok(Redirect::to(&authorize_url))
-}
-
-#[derive(Deserialize)]
-pub struct OAuthCallbackQuery {
-    #[serde(default)]
-    code: Option<String>,
-    #[serde(default)]
-    error: Option<String>,
-    #[serde(default)]
-    error_description: Option<String>,
-}
-
-pub async fn oauth_callback(
-    Query(params): Query<OAuthCallbackQuery>,
-    State(state): State<AppState>,
-    cookies: Cookies,
-) -> Result<impl IntoResponse, AppError> {
-    // A stray/expired visit to this URL shouldn't leave a verifier cookie
-    // sitting around either way.
-    let verifier = auth::take_oauth_verifier_cookie(&cookies);
-
-    if let Some(description) = params.error_description.or(params.error) {
-        return Ok(LoginTemplate { error: Some(description) }.into_response());
-    }
-    let Some(code) = params.code else {
-        return Ok(LoginTemplate { error: Some("Sign-in didn't complete — try again.".into()) }.into_response());
-    };
-    let Some(verifier) = verifier else {
-        return Ok(LoginTemplate {
-            error: Some("That sign-in link expired — try again.".into()),
-        }
-        .into_response());
-    };
-
-    match auth::exchange_oauth_code(&state, &code, &verifier).await {
-        Ok(session) => {
-            auth::set_session_cookies(&cookies, &session);
-            Ok(Redirect::to("/").into_response())
-        }
-        Err(AppError::Auth(msg)) => Ok(LoginTemplate { error: Some(msg) }.into_response()),
-        Err(err) => Err(err),
-    }
+// This SQLite build is a temporary fallback (see main.rs) while the real
+// Supabase + OAuth backend is waiting on credentials. login.html/signup.html
+// are shared between both builds and already render real
+// /auth/oauth/:provider links, so this build needs *some* handler behind
+// them — a friendly bounce back to /login rather than a raw 404.
+pub async fn oauth_start(Path(_provider): Path<String>) -> impl IntoResponse {
+    Redirect::to("/login?oauth=unavailable")
 }

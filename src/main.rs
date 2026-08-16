@@ -8,7 +8,8 @@ mod view;
 
 use axum::routing::{get, post};
 use axum::Router;
-use sqlx::postgres::PgPoolOptions;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use std::str::FromStr;
 use tower_cookies::CookieManagerLayer;
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
@@ -23,49 +24,20 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "nook=debug,tower_http=debug".into()))
         .init();
 
-    // `.env` shipping with blank `KEY=` lines (as this project's does, so the
-    // file exists with the right shape before you've filled it in) makes
-    // `std::env::var` return `Ok("")`, not `Err` — check for blank too, or a
-    // missing value silently turns into a much more confusing error deep
-    // inside sqlx/reqwest instead of this message.
-    fn require_env(key: &str, hint: &str) -> anyhow::Result<String> {
-        match std::env::var(key) {
-            Ok(v) if !v.trim().is_empty() => Ok(v),
-            _ => Err(anyhow::anyhow!("{key} is not set — see .env.example ({hint})")),
-        }
-    }
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://nook.db".to_string());
+    let connect_options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
 
-    let database_url = require_env("DATABASE_URL", "Supabase Project Settings → Database → Connection string")?;
-    let supabase_url =
-        require_env("SUPABASE_URL", "Project Settings → API")?.trim_end_matches('/').to_string();
-    let supabase_anon_key = require_env("SUPABASE_ANON_KEY", "Project Settings → API")?;
-    let supabase_jwt_secret =
-        require_env("SUPABASE_JWT_SECRET", "Project Settings → API → JWT Settings")?;
-    // This app's own reachable origin — used to build the OAuth callback URL
-    // Supabase redirects back to after Google/GitHub. Defaults to where this
-    // binary listens locally; set it explicitly once deployed anywhere else.
-    let app_base_url = std::env::var("APP_BASE_URL")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or_else(|| "http://127.0.0.1:3000".to_string())
-        .trim_end_matches('/')
-        .to_string();
-
-    let pool = PgPoolOptions::new().max_connections(5).connect(&database_url).await?;
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect_with(connect_options)
+        .await?;
 
     sqlx::migrate!("./migrations").run(&pool).await?;
     tracing::info!("migrations applied");
 
     tokio::fs::create_dir_all("storage").await.ok();
 
-    let state = AppState {
-        pool,
-        http: reqwest::Client::new(),
-        supabase_url,
-        supabase_anon_key,
-        jwt_decoding_key: auth::build_decoding_key(&supabase_jwt_secret),
-        app_base_url,
-    };
+    let state = AppState { pool };
 
     let app = Router::new()
         // Today (home)
@@ -84,8 +56,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/signup", get(handlers::auth::signup_form).post(handlers::auth::signup))
         .route("/login", get(handlers::auth::login_form).post(handlers::auth::login))
         .route("/logout", post(handlers::auth::logout))
+        // Google/GitHub buttons are baked into the shared login/signup
+        // templates; this build has no real OAuth backend yet, so just
+        // bounce back to /login instead of 404ing (see handlers/auth.rs).
         .route("/auth/oauth/:provider", get(handlers::auth::oauth_start))
-        .route("/auth/callback", get(handlers::auth::oauth_callback))
         // Spaces
         .route("/spaces", get(handlers::spaces::dashboard).post(handlers::spaces::create_space))
         .route("/spaces/:id", get(handlers::spaces::space_detail))
